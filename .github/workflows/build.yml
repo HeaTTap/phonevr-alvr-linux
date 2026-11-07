@@ -339,7 +339,7 @@ jobs:
           cache-read-only: ${{ false }}
 
       - name: AVD cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: avd-cache
         with:
           path: |
@@ -682,7 +682,7 @@ jobs:
             }
 
       - name: Save AVD Cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         if: always() && !steps.avd-cache.outputs.cache-hit && steps.avd_create.outcome == 'success'
         with:
           path: |
