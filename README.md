@@ -35,6 +35,8 @@ This repository is a patched fork of PhoneVR configured for low-latency 120Hz wi
 
 ## Repository Layout
 
+- `releases/PhoneVR-120Hz-Monoscopic-100FOV.apk`: Pre-patched APK (`120Hz`, `100 deg` FOV, monoscopic zero-depth mode).
+- `releases/PhoneVR-120Hz-Stereo-100FOV.apk`: Pre-patched APK (`120Hz`, `100 deg` FOV, standard 3D stereo mode).
 - `code/mobile/android/PhoneVR/app/src/main/cpp/alvr_main.cpp`: Updated C++ source with the `16ms` prediction cap, `SetLowPassFilter(6)`, `360Hz` tracking loop, and EGL triple-buffer fix.
 - `linux-120hz-setup/patch_phonevr_apk.py`: Binary patcher script for PhoneVR v2.0.0-beta ARM64 native libraries.
 - `linux-120hz-setup/adb`: ADB wrapper for `~/.local/bin/adb`.
@@ -44,9 +46,9 @@ This repository is a patched fork of PhoneVR configured for low-latency 120Hz wi
 
 ## Quick Install
 
-1. Download the pre-patched APK from the Releases page (either the `Monoscopic-100FOV` build for zero eye strain on close gauges, or the `Stereo-100FOV` build for standard 3D depth) and install it over ADB:
+1. Install one of the pre-patched APKs from `releases/` over ADB (either `PhoneVR-120Hz-Monoscopic-100FOV.apk` for zero eye strain on close gauges, or `PhoneVR-120Hz-Stereo-100FOV.apk` for standard 3D depth):
    ```bash
-   adb install -r PhoneVR-GalaxyA57-120Hz-Monoscopic-100FOV.apk
+   adb install -r releases/PhoneVR-120Hz-Monoscopic-100FOV.apk
    ```
 2. Install the Linux helper scripts and systemd watchdog:
    ```bash
