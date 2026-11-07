@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ARM64 120Hz binary patcher and Linux ALVR USB integration
 """
 Binary patcher for PhoneVR v2.0.0-beta (ARM64) on Android 16 / Samsung Exynos 120Hz.
 
