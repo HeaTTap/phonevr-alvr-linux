@@ -1,0 +1,310 @@
+name: Prepare release
+
+env:
+  MAIN_PROJECT_MODULE: app
+  PROJECT_NAME: PhoneVR
+
+  SOLUTION_FILE_PATH: code\windows\PhoneVR\PhoneVR.sln
+  SOLUTION_DIR: code\windows\PhoneVR\
+
+  GRADLE_DIR: code/mobile/android/PhoneVR
+  ORG_FULL: PhoneVR-Developers/PhoneVR
+  
+  CARGO_TERM_COLOR: always
+
+permissions:
+  checks: write
+  pull-requests: write
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string (eg. 0.3.1-beta)"
+        required: false
+        default: ""
+
+jobs:
+  prepare_release:
+    runs-on: windows-2019
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+      release_ref: ${{ steps.output_ref.outputs.release_ref }}
+    steps:
+      - name: Configure git
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Bump version
+        if: github.event.inputs.version != ''
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          $versionInt,$suffix = $version.Split('-')
+          $versioncomma = $versionInt.replace('.',',')
+
+          echo "#define PVR_BINVERSION $versioncomma" "#define PVR_STRVERSION `"$version`"" > code/common/src/version.info
+          echo "VERSION=$versionInt" "VERSION_NAME=$version" > code/mobile/android/PhoneVR/version.properties
+
+      - name: Push changes
+        if: github.event.inputs.version != ''
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "[Auto] Bump version"
+          tagging_message: v${{ github.event.inputs.version }}
+
+      - name: Output ref for later checkouts
+        id: output_ref
+        run: echo "::set-output name=release_ref::$(git rev-parse HEAD)"
+
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ github.event.inputs.version }}
+          name: PhoneVR v${{ github.event.inputs.version }}
+          draft: true
+          prerelease: false
+          generateReleaseNotes: true
+          commit: ${{ steps.output_ref.outputs.release_ref }}
+  
+  Build_PVR_Server:
+    name: Build PhoneVR Server
+    needs: [prepare_release]
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release]
+        platform: [x64, x86]
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+        ref: ${{ needs.prepare_release.outputs.release_ref }}
+
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v1
+      with:
+        version: "16.0.0"
+      
+    - name: Clang-format check
+      shell: bash
+      run: make format-check
+
+    # https://github.com/actions/runner-images/issues/842#issuecomment-1495115166
+    - name: Install MSVC 2017 (v141) and Windows 8.1 SDK for MSVS2022
+      shell: powershell
+      run: |
+        env
+
+        $VS_BTOOLS_EXE="vs_buildtools.exe"
+        $VS_BTOOLS_URI="https://aka.ms/vs/17/release/vs_buildtools.exe"
+        Invoke-WebRequest -Uri $VS_BTOOLS_URI -OutFile $VS_BTOOLS_EXE
+        Start-Process -FilePath ./vs_BuildTools.exe -ArgumentList `
+        "--add", "Microsoft.VisualStudio.Component.VC.v141.x86.x64", `
+        "--quiet", "--norestart", "--force", "--wait" -Wait -PassThru -nonewwindow
+
+        # 8.1 SDK is no longer available in latest github-runners and MSVS2022/2019 build tools
+        # have to download it manually like https://stackoverflow.com/a/77947878
+        
+        Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=323507 -OutFile sdk81setup.exe
+        Start-Process -FilePath ./sdk81setup.exe -ArgumentList "/features +", "/q", "/norestart" -Wait -PassThru -nonewwindow
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2.0.0
+      with:
+        vs-version: '17'
+
+    - name: Restore NuGet packages
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+    
+    - name: Building ${{matrix.platform}}-${{matrix.config}}
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      # Add additional options to the MSBuild command line here (like platform or verbosity level).
+      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
+      run: | 
+        env
+        
+        $env:VCTargetsPath="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\"
+        
+        env
+       
+        msbuild /m /p:Configuration=${{matrix.config}} /p:Platform=${{matrix.platform}} ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Upload Build outputs
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PROJECT_NAME }}-Server-${{ matrix.config }}
+        path: ${{ env.SOLUTION_DIR }}\${{ matrix.config }}
+  
+  Build_APK:
+    name: Build Android APK
+    needs: [prepare_release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare_release.outputs.release_ref }}
+          submodules: 'true'
+
+      # Set Current Date As Env Variable
+      - name: Set current date as env variable
+        id: vars
+        shell: bash
+        run: |
+          echo "date_today=$(date +'%Y-%m-%d')" >> "$GITHUB_ENV"
+          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+          echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+      - name: Set Up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+     
+      # Only for Testing github-actions
+      - uses: actions-rs/toolchain@v1
+        if: ${{ github.event.pull_request.head.repo.full_name != '${{ env.ORG_FULL }}' }} # Only run if not on master repo
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ github.event.pull_request.head.repo.full_name != '${{ env.ORG_FULL }}' }} # Only run if not on master repo
+        with:
+          cache-on-failure: true
+          workspaces: ${{env.GRADLE_DIR}}/ALVR/
+      
+      - uses: gradle/gradle-build-action@v3
+        if: ${{ github.event.pull_request.head.repo.full_name != '${{ env.ORG_FULL }}' }} # Only run if not on master repo
+        with:
+          build-root-directory: ${{env.GRADLE_DIR}}
+          cache-read-only: ${{ false }}
+
+      - name: Prepare deps
+        run: |          
+          ls -alh
+          cd code/mobile/android/PhoneVR
+          chmod +x prepare-alvr-deps.sh
+          bash prepare-alvr-deps.sh
+      
+      - name: Change gradle wrapper permissions
+        run: |
+          cd code/mobile/android/PhoneVR
+          chmod +x ./gradlew
+          ls -alh
+          ls -alh app
+
+      # Create APK Debug
+      - name: Build apk debug project (APK)
+        run:  |
+          cd code/mobile/android/PhoneVR
+          ./gradlew :${{ env.MAIN_PROJECT_MODULE }}:assembleDebug --warning-mode=all --stacktrace -Dorg.gradle.java.home=${{env.JAVA_HOME}}
+
+      # Create APK Release
+      - name: Build apk release project (APK)
+        env:
+          Key: ${{ secrets.KEY }}
+          Store: ${{ secrets.STORE }}
+        run:  |
+          cd code/mobile/android/PhoneVR
+          ./gradlew :${{ env.MAIN_PROJECT_MODULE }}:assembleRelease --warning-mode=all --stacktrace -Dorg.gradle.java.home=${{env.JAVA_HOME}}
+
+      # Upload Artifact Build
+      # Noted For Output eg. [MAIN_PROJECT_MODULE]/build/outputs/apk/gvr/debug/
+      - name: Upload Debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-debug-${{ steps.vars.outputs.sha_short }}-${{ env.date_today }} APK
+          path: ${{env.GRADLE_DIR}}/${{ env.MAIN_PROJECT_MODULE }}/build/outputs/apk/**/debug/
+
+      # Noted For Output eg. [MAIN_PROJECT_MODULE]/build/outputs/apk/gvr/release/
+      - name: Upload Release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ steps.vars.outputs.sha_short }}-${{ env.date_today }} APK
+          path: ${{env.GRADLE_DIR}}/${{ env.MAIN_PROJECT_MODULE }}/build/outputs/apk/**/release/
+  
+      - name: Upload Build outputs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: ${{ env.GRADLE_DIR }}/app/.cxx/
+  
+      - name: Rename release-APK for release
+        env:
+          GRADLE_PVR_DIR: ${{ env.GRADLE_DIR }}
+          MODULE: ${{ env.MAIN_PROJECT_MODULE }}
+        run: |
+          cd "$GRADLE_DIR/$MAIN_PROJECT_MODULE/build/outputs/apk/gvr/release/"
+          mv -f PhoneVR*.apk PhoneVR.apk
+          cd -
+          cd "$GRADLE_DIR/$MAIN_PROJECT_MODULE/build/outputs/apk/noGvr/release/"
+          mv -f PhoneVR*.apk PhoneVR-noGvr.apk
+
+      - name: Upload PVR APK
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.prepare_release.outputs.upload_url }}
+          asset_path: ${{env.GRADLE_DIR}}/${{ env.MAIN_PROJECT_MODULE }}/build/outputs/apk/gvr/release/PhoneVR.apk
+          asset_name: PhoneVR-v${{ github.event.inputs.version }}.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Upload PVR noGvr APK
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.prepare_release.outputs.upload_url }}
+          asset_path: ${{env.GRADLE_DIR}}/${{ env.MAIN_PROJECT_MODULE }}/build/outputs/apk/noGvr/release/PhoneVR-noGvr.apk
+          asset_name: PhoneVR-v${{ github.event.inputs.version }}-noGvr.apk
+          asset_content_type: application/vnd.android.package-archive
+  
+  # Step is needed because the PVRServerBuild runs as a matrix and adds files to the same artifact
+  Upload_release_assets:
+    name: Upload Assets
+    needs: [Build_PVR_Server, prepare_release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare_release.outputs.release_ref }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.PROJECT_NAME }}-Server-Release # depends on line 118 Above (Upload Build Output job's with.name)
+          path: ./build_artifacts/
+
+      - name: Zip Artifact
+        env: 
+          PROJECT_NAME: ${{ env.PROJECT_NAME }}
+        run: |
+          ls -R
+          cp -a ./build_artifacts/x64/. ./driver/PVRServer/bin/win64/
+          cp -a ./build_artifacts/Win32/. ./driver/PVRServer/bin/win32/
+
+          zip -r "$PROJECT_NAME-Server-Release.zip" "./driver"
+          ls -R
+        
+      - name: Upload PVR Server Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.prepare_release.outputs.upload_url }}
+          asset_path: ${{ env.PROJECT_NAME }}-Server-Release.zip
+          asset_name: ${{ env.PROJECT_NAME }}-Server-v${{ github.event.inputs.version }}.zip
+          asset_content_type: application/gzip

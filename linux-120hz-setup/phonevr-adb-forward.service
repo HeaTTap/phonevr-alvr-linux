@@ -1,0 +1,12 @@
+[Unit]
+Description=Auto-restore ALVR/PhoneVR ADB USB port forwarding and reset dead sockets on cable reconnect
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'unset LD_LIBRARY_PATH; while true; do /usr/bin/adb wait-for-device; if ! /usr/bin/adb forward --list | grep -q "tcp:9943"; then /usr/bin/adb forward tcp:9943 tcp:9943 >/dev/null 2>&1; /usr/bin/adb forward tcp:9944 tcp:9944 >/dev/null 2>&1; /usr/bin/adb shell "am force-stop viritualisres.phonevr && am start -n viritualisres.phonevr/.InitActivity" >/dev/null 2>&1; fi; sleep 2; done'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

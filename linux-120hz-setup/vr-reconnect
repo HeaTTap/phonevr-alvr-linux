@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+unset LD_LIBRARY_PATH
+echo "Reconnecting PhoneVR over USB..."
+/usr/bin/adb wait-for-device
+/usr/bin/adb forward --remove-all >/dev/null 2>&1
+/usr/bin/adb forward tcp:9943 tcp:9943
+/usr/bin/adb forward tcp:9944 tcp:9944
+/usr/bin/adb shell "am force-stop viritualisres.phonevr && am start -n viritualisres.phonevr/.InitActivity"
+echo "Done! PhoneVR will resume streaming in ~3 seconds."
