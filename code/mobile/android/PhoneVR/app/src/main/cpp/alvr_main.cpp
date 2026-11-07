@@ -1,3 +1,4 @@
+// Android 16 sensor polling and MediaCodec operating-rate fixes
 #include "alvr_client_core.h"
 #include "cardboard.h"
 #include <GLES3/gl3.h>
