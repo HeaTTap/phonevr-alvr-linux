@@ -2,6 +2,8 @@
 
 This repository is a patched fork of PhoneVR configured for low-latency 120Hz wired USB (ADB) VR streaming on Linux (CachyOS / Arch Linux, Wayland, hybrid Intel + NVIDIA GPUs) with Android 16 devices (tested on Samsung Galaxy A57 5G / Exynos).
 
+i made this to save your broke ahhh from buying a vr headset for linux, all you need now is a phone and laptop. also fyi the only game i tested was war thunder. My phone got kinda hot so do beware, try and lower your brightness and disable HDR if needed
+
 ## What This Fixes
 
 1. **Samsung Exynos 120Hz Hardware HEVC Decode (`BAD_VALUE` crash fix)**
@@ -61,6 +63,12 @@ This repository is a patched fork of PhoneVR configured for low-latency 120Hz wi
    ```
 3. Launch ALVR Dashboard and SteamVR on Linux, open PhoneVR on your phone, and use `vr-reconnect` anytime you want to manually reset the USB stream.
 
+## Contributors
+
+- **HeaTTap** ([@HeaTTap](https://github.com/HeaTTap)) - Project setup, testing, and configuration.
+- **Claude** ([@claude](https://github.com/claude) / [Anthropic](https://github.com/anthropics)) - Initial diagnosis and troubleshooting on the phone/Android side.
+- **Antigravity** ([@google-antigravity](https://github.com/google-antigravity) / [@gemini-cli](https://github.com/gemini-cli) / [Google DeepMind](https://github.com/google-deepmind)) - ARM64 reverse engineering, binary patching (120Hz Exynos MediaCodec fix, EKF prediction cap, 6Hz low-pass filter, 360Hz tracking sync, OpenGL ES triple-buffer ghosting fix, 100-degree FOV, monoscopic mode), and Linux ALVR + SteamVR integration.
+
 ## Credits and Acknowledgments
 
 - **PhoneVR** ([PhoneVR-Developers/PhoneVR](https://github.com/PhoneVR-Developers/PhoneVR)) by viritualisres and all PhoneVR contributors for the original Android client and ALVR integration.
@@ -68,8 +76,6 @@ This repository is a patched fork of PhoneVR configured for low-latency 120Hz wi
 - **Google Cardboard SDK** ([googlevr/cardboard](https://github.com/googlevr/cardboard)) by Google for the head tracker, sensor fusion EKF, and lens distortion library.
 - **MoonlightVR** ([florke64/MoonlightVR](https://github.com/florke64/MoonlightVR)) for the Android 16 Cardboard SDK build and reference EKF configuration (`SetLowPassFilter(6)` and `16ms` prediction window).
 - **uber-apk-signer** ([patrickfav/uber-apk-signer](https://github.com/patrickfav/uber-apk-signer)) by Patrick Favre-Bulle for APK zipaligning and v2/v3 signing.
-- **Claude** ([Anthropic](https://github.com/anthropics)) for initial diagnosis and troubleshooting on the phone/Android side.
-- **Antigravity** (Google DeepMind) for ARM64 reverse engineering, binary patching (120Hz Exynos MediaCodec fix, EKF prediction cap, 6Hz low-pass filter, 360Hz tracking sync, OpenGL ES triple-buffer ghosting fix, 100-degree FOV, monoscopic mode), and Linux ALVR + SteamVR integration.
 
 ## License
 
